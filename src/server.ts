@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+// @ts-ignore
 import helmet from 'helmet';
+// @ts-ignore
 import rateLimit from 'express-rate-limit';
 import { env } from './config/env.js';
 import './config/database.js';
