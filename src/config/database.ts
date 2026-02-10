@@ -15,7 +15,7 @@ const pool = mysql.createPool({
 
 import * as schema from '../db/schema/index.js';
 
-export const db = drizzle(pool, { schema, mode: 'default', logger: true });
+export const db = drizzle(pool, { schema, mode: 'default'});
 
 // Test connection on startup
 pool
