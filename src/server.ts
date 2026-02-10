@@ -60,8 +60,13 @@ app.use('/api/admin', adminRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
+// ── Export for Vercel ─────────────────────────────────────
+export default app;
+
 // ── Start Server ─────────────────────────────────────────
-app.listen(env.PORT, () => {
-    console.log(` Server running in ${env.NODE_ENV} mode on port ${env.PORT}`);
-    console.log(` http://localhost:${env.PORT}`);
-});
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    app.listen(env.PORT, () => {
+        console.log(` Server running in ${env.NODE_ENV} mode on port ${env.PORT}`);
+        console.log(` http://localhost:${env.PORT}`);
+    });
+}
