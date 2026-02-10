@@ -10,7 +10,7 @@ import { env } from '../config/env.js';
 const cookieOptions: CookieOptions = {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'none',
     maxAge: 1 * 24 * 60 * 60 * 1000, 
 };
 
@@ -105,7 +105,7 @@ export const login = async (req: Request, res: Response) => {
                 lastName: user.lastName,
                 email: user.email,
                 role: user.role,
-                token,
+                // token,
             },
         });
     } catch (error) {
