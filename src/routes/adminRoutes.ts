@@ -16,6 +16,9 @@ import {
     createPromoBanner,
     updatePromoBanner,
     deletePromoBanner,
+    getCustomers,
+    getOrders,
+    updateOrderStatus,
 } from '../controllers/adminController.js';
 import { protect, adminOnly } from '../middleware/auth.js';
 
@@ -48,5 +51,12 @@ router.get('/promo-banners', getPromoBanners);
 router.post('/promo-banners', createPromoBanner);
 router.put('/promo-banners/:id', updatePromoBanner);
 router.delete('/promo-banners/:id', deletePromoBanner);
+
+// ── Customers ──
+router.get('/customers', getCustomers);
+
+// ── Orders ──
+router.get('/orders', getOrders);
+router.put('/orders/:id/status', updateOrderStatus);
 
 export default router;

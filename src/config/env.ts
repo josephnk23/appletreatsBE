@@ -20,6 +20,10 @@ const envSchema = z.object({
 
     // CORS
     CORS_ORIGIN: z.string().default('*'),
+
+    // Emmisor Email Service
+    EMMISOR_API_KEY: z.string().optional(),
+    EMMISOR_URL: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

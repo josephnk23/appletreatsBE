@@ -1,8 +1,58 @@
 import type { Request, Response } from 'express';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { db } from '../config/database.js';
 import * as schema from '../db/schema/index.js';
 import { parseProductJSON } from '../utils/productUtils.js';
+
+const toNumber = (val: any) => {
+    if (val === null || val === undefined) return 0;
+    const asNumber = Number(val);
+    return Number.isNaN(asNumber) ? 0 : asNumber;
+};
+
+const formatDate = (value: any) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+    });
+};
+
+const mapOrder = (order: any, user: any, address: any, items: any[]) => ({
+    id: order.id,
+    customerId: order.customerId,
+    customerName: user ? `${user.firstName} ${user.lastName}` : 'Customer',
+    customerEmail: user?.email || '',
+    date: formatDate(order.createdAt),
+    createdAt: order.createdAt,
+    total: toNumber(order.total),
+    subtotal: toNumber(order.subtotal),
+    tax: toNumber(order.tax),
+    shippingCost: toNumber(order.shippingCost),
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    items: items.map((item) => ({
+        productId: item.productId,
+        name: item.name,
+        price: toNumber(item.price),
+        quantity: item.quantity,
+        image: item.image,
+        selectedOptions: item.selectedOptions || [],
+    })),
+    shippingAddress: address
+        ? {
+            address: address.address,
+            city: address.city,
+            region: address.region,
+            zipCode: address.zipCode,
+            country: address.country,
+        }
+        : null,
+    trackingNumber: order.trackingNumber,
+});
 
 // ── Products ─────────────────────────────────────────────
 
@@ -303,5 +353,143 @@ export const deletePromoBanner = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('❌ Error in deletePromoBanner:', error);
         res.status(500).json({ success: false, message: 'Failed to delete promo banner' });
+    }
+};
+
+// ── Customers ───────────────────────────────────────────
+
+export const getCustomers = async (_req: Request, res: Response) => {
+    try {
+        const customers = await db
+            .select()
+            .from(schema.users)
+            .where(eq(schema.users.role, 'customer'))
+            .orderBy(desc(schema.users.createdAt));
+
+        if (customers.length === 0) {
+            res.json({ success: true, data: [] });
+            return;
+        }
+
+        const userIds = customers.map((customer) => customer.id);
+
+        const addresses = await db
+            .select()
+            .from(schema.addresses)
+            .where(and(inArray(schema.addresses.userId, userIds), eq(schema.addresses.isDefault, true)));
+
+        const addressMap = new Map(addresses.map((address) => [address.userId, address]));
+
+        const aggregates = await db
+            .select({
+                customerId: schema.orders.customerId,
+                totalOrders: sql<number>`COUNT(*)`,
+                totalSpent: sql<string>`COALESCE(SUM(${schema.orders.total}), 0)`,
+            })
+            .from(schema.orders)
+            .where(inArray(schema.orders.customerId, userIds))
+            .groupBy(schema.orders.customerId);
+
+        const aggregatesMap = new Map(
+            aggregates.map((row) => [row.customerId, { totalOrders: row.totalOrders, totalSpent: row.totalSpent }])
+        );
+
+        const data = customers.map((customer) => {
+            const address = addressMap.get(customer.id);
+            const aggregate = aggregatesMap.get(customer.id);
+
+            return {
+                id: customer.id,
+                firstName: customer.firstName,
+                lastName: customer.lastName,
+                email: customer.email,
+                phoneNumber: customer.phoneNumber,
+                role: customer.role,
+                status: customer.status,
+                lastActive: customer.lastActiveAt ? formatDate(customer.lastActiveAt) : 'N/A',
+                totalOrders: aggregate ? Number(aggregate.totalOrders) : 0,
+                totalSpent: aggregate ? toNumber(aggregate.totalSpent) : 0,
+                shippingAddress: address
+                    ? {
+                        address: address.address,
+                        city: address.city,
+                        region: address.region,
+                        zipCode: address.zipCode,
+                        country: address.country,
+                    }
+                    : null,
+            };
+        });
+
+        res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('❌ Error in getCustomers:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch customers' });
+    }
+};
+
+// ── Orders ──────────────────────────────────────────────
+
+export const getOrders = async (_req: Request, res: Response) => {
+    try {
+        const rows = await db
+            .select({
+                order: schema.orders,
+                user: schema.users,
+                address: schema.addresses,
+            })
+            .from(schema.orders)
+            .leftJoin(schema.users, eq(schema.orders.customerId, schema.users.id))
+            .leftJoin(schema.addresses, eq(schema.orders.shippingAddressId, schema.addresses.id))
+            .orderBy(desc(schema.orders.createdAt));
+
+        if (rows.length === 0) {
+            res.json({ success: true, data: [] });
+            return;
+        }
+
+        const orderIds = rows.map((row) => row.order.id);
+        const items = await db
+            .select()
+            .from(schema.orderItems)
+            .where(inArray(schema.orderItems.orderId, orderIds));
+
+        const itemsByOrder = new Map<string, any[]>();
+        for (const item of items) {
+            const list = itemsByOrder.get(item.orderId) || [];
+            list.push(item);
+            itemsByOrder.set(item.orderId, list);
+        }
+
+        const data = rows.map((row) =>
+            mapOrder(row.order, row.user, row.address, itemsByOrder.get(row.order.id) || [])
+        );
+
+        res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('❌ Error in getOrders:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch orders' });
+    }
+};
+
+export const updateOrderStatus = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body || {};
+
+        if (!status) {
+            res.status(400).json({ success: false, message: 'Status is required' });
+            return;
+        }
+
+        await db
+            .update(schema.orders)
+            .set({ status })
+            .where(eq(schema.orders.id, id));
+
+        res.json({ success: true, message: 'Order status updated' });
+    } catch (error: any) {
+        console.error('❌ Error in updateOrderStatus:', error);
+        res.status(500).json({ success: false, message: 'Failed to update order status' });
     }
 };
