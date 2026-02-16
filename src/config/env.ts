@@ -24,6 +24,7 @@ const envSchema = z.object({
     // Emmisor Email Service
     EMMISOR_API_KEY: z.string().optional(),
     EMMISOR_URL: z.string().optional(),
+    EMMISOR_SERVICE_SLUG: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

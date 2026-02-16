@@ -20,14 +20,31 @@ class EmmisorClient {
         if (body) options.body = JSON.stringify(body);
 
         const response = await fetch(`${this.baseUrl}${endpoint}`, options);
-        const data: any = await response.json();
+
+        // Handle empty or non-JSON responses
+        const text = await response.text();
+        let data: any = null;
+
+        if (text) {
+            try {
+                data = JSON.parse(text);
+            } catch {
+                console.log(`Emmisor ${method} ${endpoint} non-JSON response:`, text);
+                if (!response.ok) {
+                    throw new Error(`Emmisor request failed: ${response.status} - ${text}`);
+                }
+                return { success: true, rawResponse: text };
+            }
+        }
 
         console.log(`Emmisor ${method} ${endpoint} response:`, data);
 
         if (!response.ok) {
-            throw new Error(data.error || `Emmisor request failed: ${response.status}`);
+            const error = new Error(data?.error || `Emmisor request failed: ${response.status}`);
+            (error as any).code = data?.code;
+            throw error;
         }
-        return data;
+        return data ?? { success: true };
     }
 
     async sendEmail({ to, subject, html, text, variables }: {
@@ -38,6 +55,47 @@ class EmmisorClient {
         variables?: Record<string, string>;
     }) {
         return this.request('/email/send', 'POST', { to, subject, html, text, variables });
+    }
+
+    async sendBulkEmail({ subject, html, text, recipients }: {
+        subject: string;
+        html: string;
+        text?: string;
+        recipients: Array<{ email: string; variables?: Record<string, string> }>;
+    }) {
+        return this.request('/email/send-bulk', 'POST', { subject, html, text, recipients });
+    }
+
+    // Service-slug contact management
+    async subscribeContact(serviceSlug: string, { email, firstName, lastName, phone }: {
+        email: string;
+        firstName: string;
+        lastName: string;
+        phone?: string;
+    }) {
+        return this.request(`/${serviceSlug}/contacts/subscribe`, 'POST', {
+            email,
+            firstName,
+            lastName,
+            phone,
+        });
+    }
+
+    async unsubscribeContact(serviceSlug: string, email: string) {
+        return this.request(`/${serviceSlug}/contacts/unsubscribe`, 'POST', { email });
+    }
+
+    async sendEmailToList(serviceSlug: string, { subject, html, text, variables }: {
+        subject: string;
+        html: string;
+        text?: string;
+        variables?: Record<string, string>;
+    }) {
+        return this.request(`/${serviceSlug}/email/send`, 'POST', { subject, html, text, variables });
+    }
+
+    async getListInfo(serviceSlug: string) {
+        return this.request(`/${serviceSlug}/lists`);
     }
 
     async getStatus() {
