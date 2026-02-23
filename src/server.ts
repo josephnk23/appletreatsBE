@@ -30,8 +30,27 @@ app.use((req, res, next) => {
 app.use(helmet());
 app.use(
     cors({
-        origin: '*',
-        credentials: false,
+        origin: (origin, callback) => {
+            // Allow requests with no origin (like mobile apps or curl requests)
+            if (!origin) return callback(null, true);
+            
+            // Whitelist of allowed origins
+            const allowedOrigins = [
+                'http://localhost:3000',
+                'http://localhost:3001',
+                'https://appletreatsgh.com',
+                'http://appletreatsgh.com',
+                'https://www.appletreatsgh.com',
+                'http://www.appletreatsgh.com',
+            ];
+            
+            if (allowedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        },
+        credentials: true,
     })
 );
 
